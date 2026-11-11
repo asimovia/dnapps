@@ -32,6 +32,8 @@ decisions marked as fixed and adapts the rest to the person building the app.
 
 | File | What it is |
 |---|---|
+| [`WHY.md`](WHY.md) | The idea behind it: the DNA analogy, the two purposes, what we measured |
+| [`ROADMAP.md`](ROADMAP.md) | The plan from this draft to a stable standard |
 | [`spec.md`](spec.md) | The specification, v0.1 draft |
 | [`schema.json`](schema.json) | JSON Schema for capsules |
 | [`guide.md`](guide.md) | How to write a capsule that builds right, learned from real unattended builds |
