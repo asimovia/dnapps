@@ -17,7 +17,7 @@
 - [ ] Turn the authoring guide's lessons into rules the spec requires: the test
       harness as a deliverable, versions checked at build time, tests that
       look at the rendered app.
-- [ ] Start a W3C Community Group for DNApps and move the spec there.
+- [ ] Start a W3C Community Group for DNApps (proposed November 11, 2026). If the group adopts the draft, contribute it under the W3C CLA and continue the work there.
 
 ## Then: toward a candidate
 

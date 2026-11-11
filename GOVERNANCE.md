@@ -24,9 +24,26 @@ publish a summary of every comment and what we did with it, and release v0.2.
 - Editors today: the MeshKore team (Asimovia). We want editors from outside
   Asimovia and will invite regular contributors.
 
-## Toward a standards body
+## Toward a standards body: the W3C Community Group
 
-The plan is to move the work to a W3C Community Group once there is enough
-interest. The specification would then continue as a Community Group Report
-under the W3C's process and patent commitments. If the community prefers
-another venue, we're open to it.
+We have proposed a W3C Community Group for DNApps (shortname `dnapps`). Once
+it is formed:
+
+- **This draft is input, not a constraint.** The group may use it, change it
+  or set it aside. The group's participants decide what it publishes.
+- **If the group decides to adopt the draft**, Asimovia contributes the text
+  it owns under the
+  [W3C Community Contributor License Agreement](https://www.w3.org/community/about/process/cla/)
+  (CLA). From then on the specification is developed in the group, under the
+  W3C Community Group process, and this repository points to it.
+- **The licenses here don't change.** The CLA grants a non-exclusive license,
+  so what is already published stays available under CC BY 4.0 (text) and
+  Apache-2.0 (schema). The [patent pledge](PATENTS.md) also stays. It goes
+  further than the CLA's royalty-free commitment, which covers only claims
+  essential to implementing the specification.
+- **Contributions from other people.** Asimovia can only contribute what it
+  owns. If you have contributed text to this repository and the group adopts
+  the draft, we will ask you to join the group and contribute that text
+  yourself under the CLA.
+
+If the community prefers another venue, we're open to it.

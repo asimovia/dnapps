@@ -21,6 +21,9 @@ contributions are:
 - By contributing you agree that your contribution is licensed under the
   license of the file you change (CC BY 4.0 for text, Apache-2.0 for the
   schema, and the license stated inside an example capsule) and is covered by the patent pledge.
+- If the W3C Community Group for DNApps adopts this draft, we will ask you to
+  join the group and contribute your text there under the W3C CLA. We can only
+  contribute text we own. See [GOVERNANCE.md](GOVERNANCE.md).
 
 ## Conduct
 
