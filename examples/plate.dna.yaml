@@ -14,7 +14,7 @@ identity:
   id: "com.meshkore.examples.plate"
   name: "Plate"
   summary: "Photograph what you eat; a vision model estimates calories and macros, and you see each day and month against your goal."
-  version: "1.2.1"
+  version: "1.2.2"
   visibility: public
   license: MIT
   authors: [{ name: "MeshKore", contact: "https://meshkore.com/contact" }]
@@ -92,7 +92,7 @@ features:
     acceptance:
       - "GIVEN no connection WHEN the person logs a photo THEN it is saved and analyzed automatically once back online"
       - "GIVEN a supporting browser WHEN the person installs it THEN it runs from the home screen as a standalone app"
-      - "GIVEN a new version of the app is published WHEN the person opens it THEN the new version runs at the latest on the next launch, never an old copy forever: the service worker's cache name includes the capsule version and a hash of the app files"
+      - "GIVEN a new version of the app is published WHEN the person opens it THEN the new version runs at the latest on the next launch, never an old copy forever. The service worker's cache name is plate-<identity.version>-<hash>, where <hash> is the first 12 hex characters of the sha256 of the files it caches, read in the order sw.js lists them. Any change to a cached file changes the name. tests/check-build.mjs recomputes it from the files on disk"
 
 data:
   entities:
@@ -141,7 +141,7 @@ stack:
     mode: adapt
     why: "The person picks provider and model; the app must not depend on one vendor"
     alternatives: ["OpenAI GPT mini vision", "Google Gemini Flash", "Anthropic Claude"]
-    rule: "Default model ids MUST be checked against each provider's current model list at build time (not taken from memory) and recorded in the lock with the date checked and the page used as the source. If a provider can't be checked, the lock says checked: false for it. Never mark a model as checked without a source. The person can type any other model id in settings."
+    rule: "Default model ids MUST be checked against each provider's current model list at build time (not taken from memory) and recorded in the lock with the date checked and the page used as the source. Look the list up on the web (each provider's public models page or docs); the builder's own model name or its memory is not a source. If the lookup fails for a provider, the lock says checked: false and records the URL tried and the error. Never mark a model as checked without a source URL. The person can type any other model id in settings."
 
 deploy:
   class: personal
@@ -205,8 +205,9 @@ builder:
     - "index.html: opens the working app with a double-click"
     - "tests/index.html: opens with a double-click and runs every test in the browser, showing each acceptance id as pass or fail"
     - "README.md: the two ways to run the app and how to run the tests"
-    - "plate.dna.lock.yaml: as in spec §6.1, including the capsule's sha256 and the test result summary"
-  done_when: "Every test in tests/index.html passes. The builder runs it (headless browser, or node with a DOM shim) before declaring the build finished, and reports the counts."
+    - "tests/check-build.mjs: plain node, no dependencies, run with `node tests/check-build.mjs`. It checks what the browser tests can't: the cache name (F9.3), the capsule hash in the lock and the model sources in the lock. It prints each check as pass or fail and exits non-zero on any fail"
+    - "plate.dna.lock.yaml: as in spec §6.1, including the capsule's sha256 and the test result summary. The sha256 is of the capsule's raw bytes, not of a web page showing it: for a github.com/<owner>/<repo>/blob/<ref>/<path> URL, fetch https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>. Record that raw URL in the lock as capsule_source"
+  done_when: "Every test in tests/index.html passes and `node tests/check-build.mjs` exits 0. The builder runs both (headless browser, or node with a DOM shim, for the first) before declaring the build finished, and reports the counts."
   hygiene: "Leave no server or background process running when finished."
 
 testing:
@@ -215,6 +216,8 @@ testing:
   harness:
     independence: "Tests check the app the way a person sees it (the rendered document), not the app's own data structures. A test that reads the same dictionary the UI reads proves nothing about what is on screen."
     runner: "tests/index.html, plain JavaScript, no framework and no network. Same classic-script rule as the app."
+    skipped: "A test that can't run where it is opened (for example reading sw.js from file://) reports skipped with the reason, never pass. Skipped tests count apart in the summary."
+    build_check: "tests/check-build.mjs (see builder.deliverable) must fail on: a cache name that doesn't match plate-<version>-<hash> recomputed from the cached files; a lock sha256 that differs from the sha256 of the bytes at capsule_source; a model with checked: true and no source URL and date. Each of these failed in an earlier build while the browser tests passed."
     naming: "One test group per acceptance line, named by feature id and line number (F1.1, F1.2 … F10.1), so a reader can map results back to this file."
     model_calls: "Every estimator and review test runs against a fake provider that returns recorded JSON responses (good estimate, label read, not-food, malformed JSON with code fences, HTTP 429). No test needs a real API key."
     live_check: "Optional: if the person has saved a key, tests/index.html offers one button that sends the text 'two fried eggs and a slice of wholemeal toast' to the real provider and checks the result is between 300 and 500 kcal."
@@ -223,7 +226,7 @@ testing:
       - "IndexedDB store: create, list by day, update, delete, delete everything"
       - "Estimator prompt contains every rule in x-estimation-rules"
       - "Every screen in both languages: no visible text and no accessible name left in the other language. How to check: switch the app to each language, open every screen, collect document.body.innerText plus every aria-label, title, placeholder and label in the WHOLE document (navigation bar, header and dialogs included, not only the screen container), and fail if any collected string equals a string of the other language's dictionary."
-      - "Every form control and button has an accessible name (label, aria-label or text) in the current language. Check the whole document, not only the active screen."
+      - "Every form control and button has an accessible name (label, aria-label or text) in the current language. Check the whole document, not only the active screen. Visually hidden inputs count if they can take focus: a file input opened by a labeled button gets tabindex=-1 and aria-hidden=true, or its own label."
       - "Charts with 1 day, 7 days and 30 days of data: axes readable, no repeated or meaningless tick labels"
       - "CSV export contains every meal and every number"
       - "Offline queue: a meal saved while offline is analyzed when the online event fires"
