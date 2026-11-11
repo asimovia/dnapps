@@ -14,7 +14,7 @@ identity:
   id: "com.meshkore.examples.plate"
   name: "Plate"
   summary: "Photograph what you eat; a vision model estimates calories and macros, and you see each day and month against your goal."
-  version: "1.2.2"
+  version: "1.2.3"
   visibility: public
   license: MIT
   authors: [{ name: "MeshKore", contact: "https://meshkore.com/contact" }]
@@ -207,7 +207,7 @@ builder:
     - "README.md: the two ways to run the app and how to run the tests"
     - "tests/check-build.mjs: plain node, no dependencies, run with `node tests/check-build.mjs`. It checks what the browser tests can't: the cache name (F9.3), the capsule hash in the lock and the model sources in the lock. It prints each check as pass or fail and exits non-zero on any fail"
     - "plate.dna.lock.yaml: as in spec §6.1, including the capsule's sha256 and the test result summary. The sha256 is of the capsule's raw bytes, not of a web page showing it: for a github.com/<owner>/<repo>/blob/<ref>/<path> URL, fetch https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>. Record that raw URL in the lock as capsule_source"
-  done_when: "Every test in tests/index.html passes and `node tests/check-build.mjs` exits 0. The builder runs both (headless browser, or node with a DOM shim, for the first) before declaring the build finished, and reports the counts."
+  done_when: "Every test in tests/index.html passes and `node tests/check-build.mjs` exits 0. The builder runs tests/index.html served over http://localhost in a headless browser, so no rendered-app test is skipped, then stops the server, and runs check-build. It reports the counts of both, skipped included."
   hygiene: "Leave no server or background process running when finished."
 
 testing:
@@ -215,6 +215,7 @@ testing:
   from_features: true
   harness:
     independence: "Tests check the app the way a person sees it (the rendered document), not the app's own data structures. A test that reads the same dictionary the UI reads proves nothing about what is on screen."
+    rendered_app: "Every check on what a person sees or hears (text, accessible names, placeholders, titles, headings, chart alternatives) runs against the app itself: tests/index.html loads ../index.html in an iframe and inspects that iframe's document after switching language and opening each screen through the app's own controls. Comparing dictionaries, reading i18n data or calling render functions on their own does not count for these lines. When the iframe can't be read (some browsers on file://), these tests report skipped, never pass."
     runner: "tests/index.html, plain JavaScript, no framework and no network. Same classic-script rule as the app."
     skipped: "A test that can't run where it is opened (for example reading sw.js from file://) reports skipped with the reason, never pass. Skipped tests count apart in the summary."
     build_check: "tests/check-build.mjs (see builder.deliverable) must fail on: a cache name that doesn't match plate-<version>-<hash> recomputed from the cached files; a lock sha256 that differs from the sha256 of the bytes at capsule_source; a model with checked: true and no source URL and date. Each of these failed in an earlier build while the browser tests passed."
