@@ -1,0 +1,281 @@
+# DNApps capsule. Spec: https://meshkore.com/dnapps
+# Hand this file to your coding agent:
+#   "Build the app described in plate.dna.yaml
+#    following the DNApps standard at https://meshkore.com/dnapps/spec.md"
+#
+# Plate is the nutrition part of Evolvea, a personal fitness app with gym,
+# cycling, nutrition and an AI coach, split out as a small app of its own.
+# It's a good example because it uses a bit of everything: the camera, an AI
+# vision model with the person's own API key, health data, offline storage,
+# charts, dictation and two languages.
+appdna: "0.1"
+
+identity:
+  id: "com.meshkore.examples.plate"
+  name: "Plate"
+  summary: "Photograph what you eat; a vision model estimates calories and macros, and you see each day and month against your goal."
+  version: "1.2.1"
+  visibility: public
+  license: MIT
+  authors: [{ name: "MeshKore", contact: "https://meshkore.com/contact" }]
+  lineage:
+    forked_from: "Evolvea (personal fitness PWA: gym, cycling, nutrition, AI coach)"
+    changes: "Only the nutrition module. Gym, cycling, wearables and the proactive coach are left out."
+
+purpose:
+  problem: "Counting calories by hand is so tedious that people stop after a week."
+  for: ["adults who want to gain, lose or keep weight", "people who track protein for training"]
+  outcomes:
+    - "Logging a meal takes one photo or one sentence"
+    - "At any moment the person knows how much is left for today"
+    - "Each week they get a plain-language review of how they ate"
+  non_goals:
+    - "Medical or clinical nutrition advice"
+    - "Gym, cycling or wearable tracking (other Evolvea capsules)"
+    - "Social feeds, streaks, badges or guilt mechanics"
+
+features:
+  - id: F1
+    title: "Log a meal from a photo"
+    priority: must
+    acceptance:
+      - "GIVEN a photo of a plate WHEN the person saves it THEN the meal appears at once as 'analyzing' and within 20 s shows a short name, grams, kcal, protein, carbs, fat, fiber, a 1-5 quality score and a confidence"
+      - "GIVEN a photo of a packaged product with a readable label WHEN analyzed THEN the values come from the label per 100 g multiplied by the net weight"
+      - "GIVEN a photo with no food in it WHEN analyzed THEN no meal is invented: the person is told it is not food"
+  - id: F2
+    title: "Log a meal from text or dictation"
+    priority: must
+    acceptance:
+      - "GIVEN the sentence 'two fried eggs and a slice of wholemeal toast' WHEN saved THEN it is logged with the same fields as F1"
+  - id: F3
+    title: "Photo + words in one estimate"
+    priority: must
+    acceptance:
+      - "GIVEN a photo of a pizza AND the words 'wholemeal base, half of it' WHEN analyzed THEN the name, portion and macros reflect both; where they disagree the words win"
+  - id: F4
+    title: "Correct a meal"
+    priority: must
+    acceptance:
+      - "GIVEN a logged meal WHEN the person edits any number or the time THEN totals update immediately"
+      - "GIVEN a logged meal WHEN the person adds a correction in words THEN it is re-analyzed with the original photo plus the correction"
+      - "GIVEN an analysis that failed WHEN the person taps retry THEN it is analyzed again without retaking the photo"
+  - id: F5
+    title: "Today against the goal"
+    priority: must
+    acceptance:
+      - "GIVEN a profile and today's meals WHEN the person opens the app THEN they see kcal eaten vs target, protein/carbs/fat vs target and a quality bar colored by the day's average score"
+  - id: F6
+    title: "Trends"
+    priority: should
+    acceptance:
+      - "GIVEN 30 days of meals WHEN the person opens trends THEN they see daily kcal vs target, the daily surplus or deficit, and daily quality, each with a text alternative"
+      - "GIVEN weight entries WHEN trends are open THEN weight over 30 days is shown on the same time axis"
+  - id: F7
+    title: "Weekly review"
+    priority: should
+    acceptance:
+      - "GIVEN 7 days of meals WHEN the person asks for a review THEN they get a 0-100 score, a short summary, strengths, issues and up to 3 prioritized recommendations, in their language"
+  - id: F8
+    title: "Own your data"
+    priority: must
+    acceptance:
+      - "GIVEN any meals WHEN the person exports THEN they get a CSV with every meal and its numbers"
+      - "GIVEN any data WHEN the person deletes everything THEN meals, photos, profile and key are gone from the device"
+  - id: F10
+    title: "Usable without a model key"
+    priority: must
+    acceptance:
+      - "GIVEN no API key WHEN the person logs a meal THEN they can type the numbers by hand, and the app shows where to add a key to unlock photo estimates"
+  - id: F9
+    title: "Install and work offline"
+    priority: must
+    acceptance:
+      - "GIVEN no connection WHEN the person logs a photo THEN it is saved and analyzed automatically once back online"
+      - "GIVEN a supporting browser WHEN the person installs it THEN it runs from the home screen as a standalone app"
+      - "GIVEN a new version of the app is published WHEN the person opens it THEN the new version runs at the latest on the next launch, never an old copy forever: the service worker's cache name includes the capsule version and a hash of the app files"
+
+data:
+  entities:
+    - name: Meal
+      fields: [eaten_at, source, description, grams, calories, protein_g, carbs_g, fat_g, fiber_g, health_score, health_reason, confidence, status, source_text, source_image]
+      owner: person
+    - name: Profile
+      fields: [weight_kg, height_cm, age, sex, goal, target_weight_kg, protein_per_kg, surplus_pct, target_calories, target_protein_g, target_carbs_g, target_fat_g]
+      owner: person
+    - { name: WeightEntry, fields: [date, weight_kg], owner: person }
+    - { name: Review, fields: [period_start, period_end, score, summary, strengths, issues, recommendations], owner: person }
+  rules:
+    - "Targets: derived from the profile (Mifflin-St Jeor resting energy × activity, ± surplus_pct by goal; protein = protein_per_kg × weight) unless the person types their own"
+    - "Profile defaults on first run: goal maintain, activity factor 1.55, protein_per_kg 2.0, surplus_pct 15 (applied only for gain/lose)"
+    - "Meal status: pending → done | failed. A failed meal keeps its photo and text so it can be retried"
+    - "Photos are downscaled on the device (longest side ≤ 1024 px) before being sent or stored"
+  retention: { meals: "until the person deletes them", photos: { is: "until the person deletes them", mode: adapt, why: "Some people prefer to drop photos after analysis" } }
+  sync: { is: none, mode: adapt, alternatives: ["the person's own cloud (Cloudflare D1, iCloud…)"] }
+
+platforms:
+  targets:
+    is: [web]
+    mode: preferred
+    why: "One codebase for every phone and computer; installable as a PWA. A native iOS or Android build is a valid expression."
+    alternatives: [ios, android]
+  install: { is: pwa, mode: preferred }
+  offline: { is: required, mode: fixed, why: "Meals are logged at the table, often with bad signal" }
+
+  run:
+    is: "double-click index.html: no server, no build, no install"
+    mode: fixed
+    why: "Anyone must be able to try the result. So: classic <script> tags, no ES-module imports and no fetch of local files (both fail on file://). Camera, IndexedDB and the model API work from file://; install and the service worker activate only when served over https or localhost."
+  serve: { is: "npx serve . (or any static server)", mode: preferred, why: "For the installable PWA" }
+
+stack:
+  language: { is: javascript, mode: adapt }
+  framework:
+    is: "none, just the web platform (Evolvea uses Alpine.js with no build step)"
+    mode: adapt
+    why: "Keep the double-click run. A framework with a build (SolidJS, Astro…) is acceptable only if the built output still opens with a double-click."
+    alternatives: [solidjs, astro, alpinejs]
+  database: { is: indexeddb, mode: preferred, why: "On-device, single person, offline" }
+  charts: { is: "inline SVG", mode: adapt, why: "No chart library needed for three line/bar charts" }
+  vision_model:
+    is: "any vision-capable model with JSON output"
+    mode: adapt
+    why: "The person picks provider and model; the app must not depend on one vendor"
+    alternatives: ["OpenAI GPT mini vision", "Google Gemini Flash", "Anthropic Claude"]
+    rule: "Default model ids MUST be checked against each provider's current model list at build time (not taken from memory) and recorded in the lock with the date checked and the page used as the source. If a provider can't be checked, the lock says checked: false for it. Never mark a model as checked without a source. The person can type any other model id in settings."
+
+deploy:
+  class: personal
+  hosting: { is: static, mode: preferred, alternatives: [cloudflare-pages, github-pages, self-hosted, zaelar-os] }
+  scale: { users: 1 }
+
+integrations:
+  - id: vision-llm
+    service: "A vision language model API chosen by the person"
+    use: "Estimate the meal from a photo and/or text (F1-F4) and write the weekly review (F7)"
+    required: true
+    why: "The core of the app. The person brings their own API key; it is stored only on their device and sent only to that provider."
+
+permissions:
+  - { capability: camera, use: "Photograph a meal", required: false, why: "F1; choosing a photo from the gallery works without it" }
+  - { capability: microphone, use: "Dictate a meal", required: false, why: "F2; typing works without it" }
+  - { capability: persistent-storage, use: "Ask the browser not to evict meals and photos", required: false, why: "F9" }
+  - { capability: notifications, use: "Never requested in this capsule", required: false }
+  - { capability: geolocation, use: "Never requested", required: false }
+
+experience:
+  intent: "Fast at the table, calm afterwards. One tap to the camera from anywhere. Numbers rounded to what is honest (kcal to 10, grams to 1)."
+  screens:
+    - { id: today, purpose: "Kcal and macros left for today, quality bar, today's meals" }
+    - { id: capture, purpose: "Camera or gallery, optional words or dictation, save" }
+    - { id: meal, purpose: "One meal: photo, estimate, confidence, edit, add a correction, retry" }
+    - { id: trends, purpose: "30-day kcal vs target, surplus/deficit, quality, weight" }
+    - { id: review, purpose: "The weekly review and its history" }
+    - { id: settings, purpose: "Profile and goal, targets, model provider and key, export, delete everything" }
+  design: { is: { density: compact, motion: minimal, theme: system }, mode: adapt }
+  i18n:
+    languages: { is: [en, es], mode: adapt, why: "Ship at least these two; add the person's own" }
+    content_fixed_language: null
+    notes: "Meal names and the review are generated in the person's language"
+  accessibility:
+    baseline: "WCAG 2.2 AA"
+    modalities:
+      output: [visual, audio]
+      input: [touch, keyboard, voice]
+    notes:
+      - "Every screen starts with a visible heading"
+      - "Every chart has a text or table alternative"
+      - "The quality bar never relies on color alone: it also shows the score as a number"
+      - "A meal can be logged entirely by voice, without the camera"
+
+privacy:
+  data_categories: [health, photos]
+  stays_on: device
+  shared_with: ["the vision model provider the person chooses, and only the meal photo or text being analyzed"]
+  telemetry: none
+  export: required
+
+builder:
+  unattended: true
+  defaults_without_profile:
+    languages: [en, es]
+    theme: system
+    goal: maintain
+    note: "If the person is present, the builder MAY ask about adapt/preferred genes (language, design, model provider). It MUST NOT block on an answer: without a profile or a reply it uses these defaults, finishes the build, and the person changes them later in settings. The capsule must build end-to-end without human input."
+  deliverable:
+    - "index.html: opens the working app with a double-click"
+    - "tests/index.html: opens with a double-click and runs every test in the browser, showing each acceptance id as pass or fail"
+    - "README.md: the two ways to run the app and how to run the tests"
+    - "plate.dna.lock.yaml: as in spec §6.1, including the capsule's sha256 and the test result summary"
+  done_when: "Every test in tests/index.html passes. The builder runs it (headless browser, or node with a DOM shim) before declaring the build finished, and reports the counts."
+  hygiene: "Leave no server or background process running when finished."
+
+testing:
+  levels: [unit, acceptance]
+  from_features: true
+  harness:
+    independence: "Tests check the app the way a person sees it (the rendered document), not the app's own data structures. A test that reads the same dictionary the UI reads proves nothing about what is on screen."
+    runner: "tests/index.html, plain JavaScript, no framework and no network. Same classic-script rule as the app."
+    naming: "One test group per acceptance line, named by feature id and line number (F1.1, F1.2 … F10.1), so a reader can map results back to this file."
+    model_calls: "Every estimator and review test runs against a fake provider that returns recorded JSON responses (good estimate, label read, not-food, malformed JSON with code fences, HTTP 429). No test needs a real API key."
+    live_check: "Optional: if the person has saved a key, tests/index.html offers one button that sends the text 'two fried eggs and a slice of wholemeal toast' to the real provider and checks the result is between 300 and 500 kcal."
+    must_cover:
+      - "Targets for gain, lose and maintain against hand-computed values"
+      - "IndexedDB store: create, list by day, update, delete, delete everything"
+      - "Estimator prompt contains every rule in x-estimation-rules"
+      - "Every screen in both languages: no visible text and no accessible name left in the other language. How to check: switch the app to each language, open every screen, collect document.body.innerText plus every aria-label, title, placeholder and label in the WHOLE document (navigation bar, header and dialogs included, not only the screen container), and fail if any collected string equals a string of the other language's dictionary."
+      - "Every form control and button has an accessible name (label, aria-label or text) in the current language. Check the whole document, not only the active screen."
+      - "Charts with 1 day, 7 days and 30 days of data: axes readable, no repeated or meaningless tick labels"
+      - "CSV export contains every meal and every number"
+      - "Offline queue: a meal saved while offline is analyzed when the online event fires"
+  fixtures: "A small set of meal photos (plate, packaged product with label, not-food) with expected ranges, not exact numbers"
+  devices: { is: ["Safari on iOS", "Chrome on Android", "desktop Chrome"], mode: adapt }
+
+extensions:
+  x-estimation-rules:
+    description: "Fixed behavior of the meal estimator, distilled from Evolvea's production prompt. Builders MUST keep these rules whatever model they use."
+    output: { description: "4-6 words", ingredients: "[{item, grams, kcal, p, c, f}]", totals: "{grams, calories, protein_g, carbs_g, fat_g, fiber_g}", health_score: "1-5", health_reason: "≤ 60 chars", confidence: "0-1", notes: "assumptions made" }
+    rules:
+      - "Readable nutrition label: values per 100 g × the real net weight; if only part was eaten, estimate the part"
+      - "Known commercial product without a readable label: use knowledge of the brand; never return 0 for a recognized product"
+      - "Food on a plate: estimate portion from visual references (spoon ≈ 15 g, 25 cm plate) and standard food tables (USDA, BEDCA); say if meat/fish weight is raw or cooked"
+      - "calories = 0 only when there is no food; then confidence = 0"
+      - "confidence > 0.85 label or well-known product; 0.6-0.85 identified but estimated; < 0.6 high uncertainty"
+      - "An error above 15 % in calories breaks the tracking: be decisive"
+    health_score:
+      "5": "Whole foods: fruit, vegetables, legumes, fresh fish, eggs, unsalted nuts, plain yoghurt, whole grains, water. Fruit is always 5; calorie-dense whole foods (avocado, olive oil, nuts) are not penalised"
+      "4": "Healthy with light preparation: grilled lean meat, wholemeal bread, unsweetened dairy, boiled or air-fried potato"
+      "3": "Neutral / occasional: white bread or rice, cured cheese, dark chocolate > 70 %, home-made sauce"
+      "2": "Processed or fried: cold cuts, home baking, oil-fried food, industrial sauces, alcohol, sugary desserts"
+      "1": "Ultra-processed: packaged pastries, fried snacks, sugary drinks, fast food, sweets, spirits"
+
+rna:
+  phases:
+    - id: P1
+      title: "Local core"
+      tasks:
+        - { id: T1, do: "Meal, Profile, WeightEntry and Review models in IndexedDB", done_when: "Unit tests pass for create, list by day, update and delete" }
+        - { id: T2, do: "Profile and goal → daily targets", needs: [T1], done_when: "Unit tests pass for gain, lose and maintain against hand-computed values" }
+    - id: P2
+      title: "Capture"
+      needs: [P1]
+      tasks:
+        - { id: T3, do: "Estimator client: provider/model/key settings, prompt with x-estimation-rules, JSON parsing tolerant of code fences", done_when: "F1 passes on the three fixtures" }
+        - { id: T4, do: "Capture screen: camera/gallery, words, dictation, on-device downscale, pending → done/failed", needs: [T3], done_when: "F1, F2 and F3 pass" }
+        - { id: T5, do: "Meal screen: edit, correction re-analysis, retry", needs: [T4], done_when: "F4 passes" }
+    - id: P3
+      title: "Today and trends"
+      needs: [P1]
+      tasks:
+        - { id: T6, do: "Today screen with targets, macros and the quality bar", done_when: "F5 passes" }
+        - { id: T7, do: "Trends: three 30-day SVG charts with text alternatives, plus weight", needs: [T6], done_when: "F6 passes, including with a screen reader" }
+    - id: P4
+      title: "Weekly review"
+      needs: [P2]
+      tasks:
+        - { id: T8, do: "Review from the last 7 days through the same model, stored with its history", done_when: "F7 passes in two languages" }
+    - id: P5
+      title: "Ownership and install"
+      needs: [P1]
+      tasks:
+        - { id: T9, do: "CSV export and delete-everything", done_when: "F8 passes" }
+        - { id: T10, do: "Web App Manifest, icons, offline-first service worker and an offline queue for pending analyses", done_when: "F9 passes" }

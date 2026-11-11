@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshkore.com/dnapps/schema.json",
+  "title": "DNApps capsule (App DNA) v0.1",
+  "description": "One portable file describing a whole application: DNA (what it is, what is fixed, what adapts) and RNA (the ordered build plan). Spec: https://meshkore.com/dnapps/spec.md",
+  "type": "object",
+  "required": ["appdna", "identity", "purpose", "features", "privacy", "rna"],
+  "properties": {
+    "appdna": { "type": "string", "pattern": "^0\\.[0-9]+$", "description": "Spec version, e.g. \"0.1\"." },
+    "identity": {
+      "type": "object",
+      "required": ["id", "name", "summary", "visibility"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "summary": { "type": "string", "maxLength": 280 },
+        "version": { "type": "string" },
+        "visibility": { "enum": ["public", "private", "unlisted"] },
+        "license": { "type": "string" },
+        "authors": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "contact": { "type": "string" } }, "required": ["name"] } },
+        "lineage": { "type": "object", "properties": { "forked_from": { "type": "string" }, "changes": { "type": "string" } } }
+      }
+    },
+    "purpose": {
+      "type": "object",
+      "required": ["problem"],
+      "properties": {
+        "problem": { "$ref": "#/$defs/gene" },
+        "for": { "type": "array", "items": { "type": "string" } },
+        "outcomes": { "type": "array", "items": { "type": "string" } },
+        "non_goals": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "acceptance"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "priority": { "enum": ["must", "should", "could"] },
+          "acceptance": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        }
+      }
+    },
+    "data": { "type": "object" },
+    "platforms": {
+      "type": "object",
+      "properties": {
+        "targets": { "$ref": "#/$defs/gene" },
+        "offline": { "$ref": "#/$defs/gene" }
+      }
+    },
+    "stack": { "type": "object", "additionalProperties": { "$ref": "#/$defs/gene" } },
+    "deploy": {
+      "type": "object",
+      "properties": {
+        "class": { "enum": ["personal", "team", "saas"] },
+        "hosting": { "$ref": "#/$defs/gene" },
+        "scale": { "type": "object" }
+      }
+    },
+    "integrations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "service", "use", "required"],
+        "properties": {
+          "id": { "type": "string" },
+          "service": { "type": "string" },
+          "use": { "type": "string" },
+          "required": { "type": "boolean" },
+          "scopes": { "type": "array", "items": { "type": "string" } },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capability", "use", "required"],
+        "properties": {
+          "capability": { "type": "string", "description": "W3C Permissions / Web App Manifest name where one exists (geolocation, camera, microphone, notifications, bluetooth); dotted names for OS-specific ones (health.heart_rate)." },
+          "use": { "type": "string" },
+          "required": { "type": "boolean" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "experience": {
+      "type": "object",
+      "properties": {
+        "intent": { "type": "string" },
+        "screens": { "type": "array", "items": { "type": "object" } },
+        "design": { "$ref": "#/$defs/gene" },
+        "i18n": { "type": "object" },
+        "accessibility": {
+          "type": "object",
+          "properties": {
+            "baseline": { "type": "string" },
+            "modalities": {
+              "type": "object",
+              "properties": {
+                "output": { "type": "array", "items": { "enum": ["visual", "audio", "haptic", "braille"] } },
+                "input": { "type": "array", "items": { "enum": ["touch", "keyboard", "pointer", "voice", "switch", "gaze"] } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["stays_on", "telemetry"],
+      "properties": {
+        "data_categories": { "type": "array", "items": { "type": "string" } },
+        "stays_on": { "enum": ["device", "person-cloud", "provider"] },
+        "shared_with": { "type": "array", "items": { "type": "string" } },
+        "telemetry": { "enum": ["none", "anonymous", "opt-in"] },
+        "export": { "enum": ["required", "optional", "none"] }
+      }
+    },
+    "testing": { "type": "object" },
+    "rna": {
+      "type": "object",
+      "required": ["phases"],
+      "properties": {
+        "phases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "tasks"],
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "needs": { "type": "array", "items": { "type": "string" } },
+              "tasks": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["id", "do", "done_when"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "do": { "type": "string" },
+                    "needs": { "type": "array", "items": { "type": "string" } },
+                    "done_when": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "extensions": { "type": "object", "propertyNames": { "pattern": "^x-[a-z0-9-]+$" } }
+  },
+  "$defs": {
+    "gene": {
+      "description": "A plain value, or {is, mode, why, alternatives}. mode: fixed (must honor) | preferred (should; may replace and record why) | adapt (a hint; resolve from the builder profile).",
+      "anyOf": [
+        { "type": ["string", "number", "boolean", "array", "null"] },
+        {
+          "type": "object",
+          "properties": {
+            "is": {},
+            "mode": { "enum": ["fixed", "preferred", "adapt"] },
+            "why": { "type": "string" },
+            "alternatives": { "type": "array" }
+          }
+        }
+      ]
+    }
+  }
+}
