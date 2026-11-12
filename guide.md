@@ -141,13 +141,23 @@ Treat the capsule like code. The loop we use:
 5. Build again from scratch. Stop when a fresh build passes everything you
    check by hand.
 
-## 8. Checklist before you publish a capsule
+## 8. Put the checks inside the capsule
+
+Asking the builder to write its own tests didn't work. Two builds of the same capsule by the same agent wrote very different tests, and both passed them while the app was wrong. Since Plate 1.3.0 the capsule carries a conformance kit:
+
+- a contract that makes the app testable from outside: a route for each screen, a language parameter, data-dna hooks on the elements the checks touch, a seeding hook and the lock format;
+- the checks themselves, as files the builder writes verbatim and never edits. They drive the rendered app in a headless browser with a fake model provider, and check the files on disk and the lock;
+- a loop: build, run the kit, fix the app, and repeat until every check passes. If the builder thinks a check is wrong, it records a dispute instead of changing it.
+
+The first build with a kit found three bugs in the kit itself, all through disputes. The next build passed every check on its first round. The cost is size: the kit makes the Plate capsule about 74 KB, close to the 113 KB of the app it grows.
+
+## 9. Checklist before you publish a capsule
 
 - [ ] Every feature has at least one acceptance line with an observable THEN.
 - [ ] Every default is written next to the field it applies to.
 - [ ] Nothing depends on the agent remembering a version, model id or API.
 - [ ] Every `fixed` gene has a `why` that says what breaks.
-- [ ] The test harness is a named deliverable, with fakes for external services.
+- [ ] The capsule carries its conformance kit, with fakes for external services, and the builder runs it in a loop.
 - [ ] `builder.done_when` is "the tests pass", and the agent must report the
       counts.
 - [ ] The deliverable files are listed.
@@ -165,3 +175,5 @@ Treat the capsule like code. The loop we use:
 | 1.2.1 | Claude Code, unattended, 38 min, about $9 | 36 tests, all passing, and the Spanish version was translated everywhere, navigation bar included. Four problems got through. The service worker's cache name had the version but not the hash of the app files that F9.3 asks for, and the test for it only looked for the version. The sha256 in the lock didn't match the capsule. It never looked up the model ids: two were old and marked unchecked, and a third was marked checked with no source. Two hidden file inputs had no accessible name. |
 | 1.2.2 | Claude Code, unattended, 23 min, about $6 | Run with an isolated config this time: the earlier builds also loaded the builder's personal instructions. 56 tests passed and 1 was skipped, and the new node check passed 5 of 5. Everything 1.2.1 missed was right. The cache name carried a hash of the cached files, and in our test browser the old build gave way to the new one on the second launch. The lock hash matched the capsule. All three model ids were looked up, with sources we could open. One problem got through: in Spanish, some accessible names and placeholders stayed in English (the camera button, the language menu, the navigation bar). The capsule asks for that check on the rendered document, but the test compared the two dictionaries instead. |
 | 1.2.3 | Claude Code, unattended, 33 min, about $6 | Same isolated setup and model as the fifth build, and a worse result. It reported 66 tests passing and 5 skipped, and its node check passed 35 of 35, but neither checked what the capsule asks. The lock hash was of the app's own index.html, not the capsule. The models had no source pages. The browser tests checked that Spanish strings exist, not what the rendered app shows, so the rendered-app check that 1.2.3 asks for never ran. In the app, a few accessible names and placeholders still stayed in the first language after switching. The cache name was right. Two builds of the same capsule by the same agent varied this much, so we think a capsule can't rely on the builder to write its own conformance checks. |
+| 1.3.0 | Claude Code with Opus 5.5, unattended, 19 min, about $4 | First build with the kit, on Opus 5.5. Four rounds: 20 of 28 checks, then 26, then 27. The last failure was a bug in the kit: F10.1 counted model calls from earlier checks. The builder proved it with a copy of the kit outside tests/, recorded it as a dispute and left the kit alone. It also pointed at two more kit bugs. With the kit fixed, this build passes all 27 app checks. |
+| 1.3.1 | Claude Code with Opus 5.5, unattended, 15 min, about $4 | 28 of 28 on the first round, confirmed by a second run and by ours. Lock hash, kit files, cache name and model sources all check out. |
