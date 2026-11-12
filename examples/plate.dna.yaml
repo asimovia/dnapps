@@ -1,7 +1,9 @@
 # DNApps capsule. Spec: https://meshkore.com/dnapps
 # Hand this file to your coding agent:
 #   "Build the app described in plate.dna.yaml
-#    following the DNApps standard at https://meshkore.com/dnapps/spec.md"
+#    following the DNApps standard at https://meshkore.com/dnapps/spec.md.
+#    The capsule includes a conformance kit: follow builder.loop and keep
+#    fixing the app until node tests/conformance.mjs passes."
 #
 # Plate is the nutrition part of Evolvea, a personal fitness app with gym,
 # cycling, nutrition and an AI coach, split out as a small app of its own.
@@ -14,7 +16,7 @@ identity:
   id: "com.meshkore.examples.plate"
   name: "Plate"
   summary: "Photograph what you eat; a vision model estimates calories and macros, and you see each day and month against your goal."
-  version: "1.2.3"
+  version: "1.3.0"
   visibility: public
   license: MIT
   authors: [{ name: "MeshKore", contact: "https://meshkore.com/contact" }]
@@ -92,7 +94,7 @@ features:
     acceptance:
       - "GIVEN no connection WHEN the person logs a photo THEN it is saved and analyzed automatically once back online"
       - "GIVEN a supporting browser WHEN the person installs it THEN it runs from the home screen as a standalone app"
-      - "GIVEN a new version of the app is published WHEN the person opens it THEN the new version runs at the latest on the next launch, never an old copy forever. The service worker's cache name is plate-<identity.version>-<hash>, where <hash> is the first 12 hex characters of the sha256 of the files it caches, read in the order sw.js lists them. Any change to a cached file changes the name. tests/check-build.mjs recomputes it from the files on disk"
+      - "GIVEN a new version of the app is published WHEN the person opens it THEN the new version runs at the latest on the next launch, never an old copy forever. The service worker's cache name is plate-<identity.version>-<hash>, where <hash> is the first 12 hex characters of the sha256 of the files it caches, read in the order sw.js lists them. Any change to a cached file changes the name. The conformance kit recomputes it from the files on disk"
 
 data:
   entities:
@@ -196,6 +198,7 @@ privacy:
 
 builder:
   unattended: true
+  agent: "A capable coding agent with file, web and shell (node) access, such as Claude Code with Opus 5.5 or Codex. The loop below needs it to run node and a headless browser."
   defaults_without_profile:
     languages: [en, es]
     theme: system
@@ -203,35 +206,29 @@ builder:
     note: "If the person is present, the builder MAY ask about adapt/preferred genes (language, design, model provider). It MUST NOT block on an answer: without a profile or a reply it uses these defaults, finishes the build, and the person changes them later in settings. The capsule must build end-to-end without human input."
   deliverable:
     - "index.html: opens the working app with a double-click"
-    - "tests/index.html: opens with a double-click and runs every test in the browser, showing each acceptance id as pass or fail"
-    - "README.md: the two ways to run the app and how to run the tests"
-    - "tests/check-build.mjs: plain node, no dependencies, run with `node tests/check-build.mjs`. It checks what the browser tests can't: the cache name (F9.3), the capsule hash in the lock and the model sources in the lock. It prints each check as pass or fail and exits non-zero on any fail"
-    - "plate.dna.lock.yaml: as in spec §6.1, including the capsule's sha256 and the test result summary. The sha256 is of the capsule's raw bytes, not of a web page showing it: for a github.com/<owner>/<repo>/blob/<ref>/<path> URL, fetch https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>. Record that raw URL in the lock as capsule_source"
-  done_when: "Every test in tests/index.html passes and `node tests/check-build.mjs` exits 0. The builder runs tests/index.html served over http://localhost in a headless browser, so no rendered-app test is skipped, then stops the server, and runs check-build. It reports the counts of both, skipped included."
-  hygiene: "Leave no server or background process running when finished."
+    - "The conformance kit, written verbatim from extensions.x-conformance.kit: tests/conformance.html, tests/conformance.js and tests/conformance.mjs. Byte for byte; the kit checks itself against this capsule"
+    - "README.md: the two ways to run the app and how to run the conformance kit"
+    - "plate.dna.lock.yaml: in the format of extensions.x-conformance.lock_format"
+    - "Optional: tests/index.html with the builder's own unit tests. They help the loop but never replace the kit"
+  loop: |
+    The result is defined by the conformance kit, not by the builder's judgment. Work in rounds:
+    1. Build or fix the app following the rna and the contract in extensions.x-conformance.contract.
+    2. Write the kit files verbatim (first round only; afterwards never touch them).
+    3. Install the browser once: npm i --no-save playwright && npx playwright install chromium
+    4. Run: node tests/conformance.mjs. It serves the folder on localhost, runs every check and exits 0 only when all pass and none is skipped.
+    5. For every failing check, read its message, find the cause in the app and fix the app. Never edit, skip or weaken a kit file, never special-case the test page, and never hard-code a fixture value into the app.
+    6. Record the round in the lock (round number, passed, failed, ids still failing, what was fixed) and go back to step 4.
+    Stop when the kit passes completely, or after 12 rounds. If a check still fails and you are sure the kit itself is wrong, do not change it: write the check id, the evidence and your reasoning under conformance.disputes in the lock. The build is done only with a clean run; otherwise report it as not conforming, with the ids that fail.
+  done_when: "node tests/conformance.mjs exits 0: every check passes and none is skipped. The final message reports the last run's counts and the number of rounds."
+  hygiene: "Leave no server or background process running when finished. node_modules may stay; it is not part of the app."
 
 testing:
   levels: [unit, acceptance]
   from_features: true
-  harness:
-    independence: "Tests check the app the way a person sees it (the rendered document), not the app's own data structures. A test that reads the same dictionary the UI reads proves nothing about what is on screen."
-    rendered_app: "Every check on what a person sees or hears (text, accessible names, placeholders, titles, headings, chart alternatives) runs against the app itself: tests/index.html loads ../index.html in an iframe and inspects that iframe's document after switching language and opening each screen through the app's own controls. Comparing dictionaries, reading i18n data or calling render functions on their own does not count for these lines. When the iframe can't be read (some browsers on file://), these tests report skipped, never pass."
-    runner: "tests/index.html, plain JavaScript, no framework and no network. Same classic-script rule as the app."
-    skipped: "A test that can't run where it is opened (for example reading sw.js from file://) reports skipped with the reason, never pass. Skipped tests count apart in the summary."
-    build_check: "tests/check-build.mjs (see builder.deliverable) must fail on: a cache name that doesn't match plate-<version>-<hash> recomputed from the cached files; a lock sha256 that differs from the sha256 of the bytes at capsule_source; a model with checked: true and no source URL and date. Each of these failed in an earlier build while the browser tests passed."
-    naming: "One test group per acceptance line, named by feature id and line number (F1.1, F1.2 … F10.1), so a reader can map results back to this file."
-    model_calls: "Every estimator and review test runs against a fake provider that returns recorded JSON responses (good estimate, label read, not-food, malformed JSON with code fences, HTTP 429). No test needs a real API key."
-    live_check: "Optional: if the person has saved a key, tests/index.html offers one button that sends the text 'two fried eggs and a slice of wholemeal toast' to the real provider and checks the result is between 300 and 500 kcal."
-    must_cover:
-      - "Targets for gain, lose and maintain against hand-computed values"
-      - "IndexedDB store: create, list by day, update, delete, delete everything"
-      - "Estimator prompt contains every rule in x-estimation-rules"
-      - "Every screen in both languages: no visible text and no accessible name left in the other language. How to check: switch the app to each language, open every screen, collect document.body.innerText plus every aria-label, title, placeholder and label in the WHOLE document (navigation bar, header and dialogs included, not only the screen container), and fail if any collected string equals a string of the other language's dictionary."
-      - "Every form control and button has an accessible name (label, aria-label or text) in the current language. Check the whole document, not only the active screen. Visually hidden inputs count if they can take focus: a file input opened by a labeled button gets tabindex=-1 and aria-hidden=true, or its own label."
-      - "Charts with 1 day, 7 days and 30 days of data: axes readable, no repeated or meaningless tick labels"
-      - "CSV export contains every meal and every number"
-      - "Offline queue: a meal saved while offline is analyzed when the online event fires"
-  fixtures: "A small set of meal photos (plate, packaged product with label, not-food) with expected ranges, not exact numbers"
+  authority: "extensions.x-conformance.kit. It checks every acceptance line that can be observed, against the rendered app and the files on disk. The capsule author writes and versions it; builders run it and never change it."
+  model_calls: "The kit replaces window.fetch inside the app with a fake provider that answers in each provider's documented response format. No check needs a real API key."
+  live_check: "Optional: the README may explain how the person checks their own key by logging 'two fried eggs and a slice of wholemeal toast' (expect 300 to 500 kcal)."
+  fixtures: "The kit draws its own photos and returns recorded estimates; real photos (plate, packaged product with label, not-food) are for the person's manual check"
   devices: { is: ["Safari on iOS", "Chrome on Android", "desktop Chrome"], mode: adapt }
 
 extensions:
@@ -251,6 +248,780 @@ extensions:
       "3": "Neutral / occasional: white bread or rice, cured cheese, dark chocolate > 70 %, home-made sauce"
       "2": "Processed or fried: cold cuts, home baking, oil-fried food, industrial sauces, alcohol, sugary desserts"
       "1": "Ultra-processed: packaged pastries, fried snacks, sugary drinks, fast food, sweets, spirits"
+
+  x-conformance:
+    description: "How a build proves it is this app. The contract makes the app observable from outside; the kit checks it. Both are fixed."
+    contract:
+      mode: fixed
+      why: "The kit drives the app through these hooks. Without them no build can be checked, and every build is a guess."
+      routes: "Each screen in experience.screens opens at index.html#/<screen id>; one meal opens at #/meal/<meal id>. The visible screen's root element has data-screen=\"<screen id>\" and every other screen is hidden (hidden attribute or display:none). Navigation inside the app changes the hash the same way."
+      language: "index.html?lang=<code> starts the app in that language and saves it as the person's choice. <html lang> always matches the language shown."
+      ready: "After the first render, <html> gets data-ready=\"true\". Navigation and data changes re-render within 500 ms."
+      test_seam: "window.DNA_TEST.seed(data) returns a Promise. It deletes everything, then stores data through the app's own store: { profile: {weight_kg, height_cm, age, sex, goal}, meals: [Meal fields], weights: [{date, weight_kg}], settings: {provider, model, api_key} }. Targets left out of a seeded profile are derived as usual. It is only for seeding; the kit reads results from the rendered document, never from the seam."
+      hooks: |
+        Elements carry data-dna="<name>". Number hooks contain only their number and an optional unit, as text (or as the value of an input).
+        Navigation: nav-<screen id> for each screen.
+        capture screen: photo-input (input type=file; choosing a file does not save), capture-text (the words), capture-save. With no key: manual-calories, manual-protein, manual-carbs, manual-fat, and add-key-link (an <a> with href containing #/settings). After capture-save the app shows #/today.
+        today screen: meal (one per meal, with data-meal-id and data-status = pending | done | failed; pending means waiting or analyzing), today-kcal, today-kcal-target, today-protein, today-protein-target, today-carbs, today-carbs-target, today-fat, today-fat-target, quality (shows the day's average score as a number).
+        meal screen: meal-name, field-grams, field-calories, field-protein, field-carbs, field-fat, field-fiber, field-time (inputs; a change is saved at once), meal-score, meal-confidence, correction-text, correction-send, retry (for a failed meal).
+        notice: a visible message for the person, e.g. a photo with no food.
+        trends screen: chart-kcal, chart-balance, chart-quality, chart-weight; each contains an svg and a text alternative (a table, a figcaption or an aria-label with the numbers).
+        review screen: review-request, review-score, review-summary, review-strengths, review-issues, review-recommendations (lists use <li>).
+        settings screen: provider (a select with values openai, google, anthropic), model, api-key, lang, export, delete-all. A confirmation, if any, uses window.confirm or a button with data-dna="confirm-yes".
+      model_calls: "Calls go through window.fetch at the moment of the call, to the providers' official endpoints: OpenAI chat completions (https://api.openai.com/v1/chat/completions), Gemini generateContent (https://generativelanguage.googleapis.com/...:generateContent) and Anthropic messages (https://api.anthropic.com/v1/messages). The model answers JSON text; estimates follow x-estimation-rules.output and reviews follow {score, summary, strengths[], issues[], recommendations[]}. The estimator prompt includes every x-estimation-rules rule verbatim, in English. The review prompt names the person's language."
+      service_worker: "sw.js declares CACHE_NAME and CACHE_FILES as literals (a string and an array of relative paths, index.html and manifest.json included)."
+      same_in_all_languages: [Plate, kcal, g, kg, cm, CSV, API, OK, OpenAI, Google, Gemini, Google Gemini, Anthropic, Claude, Anthropic Claude, English, Español]
+    lock_format: |
+      Top-level keys of plate.dna.lock.yaml, besides the gene choices of spec 6.1:
+      capsule_source: "<the raw URL of this capsule: for github.com/<o>/<r>/blob/<ref>/<p> use https://raw.githubusercontent.com/<o>/<r>/<ref>/<p>>"
+      capsule_sha256: "<sha256 of the bytes at capsule_source>"
+      models:
+        - provider: openai
+          model: "<id>"
+          checked: true
+          source: "<the page where the id was found, fetchable without a login>"
+          date: "YYYY-MM-DD"
+        (one entry each for openai, google and anthropic)
+      conformance:
+        rounds: [ {round, passed, failed, failing: [ids], fixed: "<what changed>"} ]
+        result: "conforming" or "not conforming"
+        disputes: [ {check, evidence, reasoning} ]
+    kit:
+      - path: tests/conformance.html
+        content: |
+          <!doctype html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Plate conformance</title>
+          <style>
+          body{font:14px/1.4 system-ui,sans-serif;margin:16px;background:#fff;color:#111}
+          #summary{font-weight:600;margin:8px 0}
+          .pass{color:#0a7d2c}.fail{color:#b00020}.skip{color:#8a5a00}
+          li{margin:2px 0}small{color:#555}
+          iframe{position:fixed;right:0;bottom:0;width:420px;height:760px;border:1px solid #999;background:#fff}
+          </style>
+          </head>
+          <body>
+          <h1>Plate conformance kit</h1>
+          <p>Runs the capsule's checks against <code>../index.html</code>. Serve the app folder over http://localhost; on file:// every check reports skipped.</p>
+          <div id="summary">Running...</div>
+          <ol id="results"></ol>
+          <script src="conformance.js"></script>
+          </body>
+          </html>
+      - path: tests/conformance.js
+        content: |
+          /* Plate conformance kit, browser part. Part of the capsule: copy verbatim, never edit.
+             It drives ../index.html in an iframe through the contract in extensions.x-conformance.contract
+             and reads only what a person sees or hears (the rendered document). */
+          (function () {
+            'use strict';
+
+            var APP = '../index.html';
+            var SCREENS = ['today', 'capture', 'trends', 'review', 'settings'];
+            var LANGS = ['en', 'es'];
+            var KEY = 'sk-dna-test-0000';
+            var RULES = [
+              "Readable nutrition label: values per 100 g × the real net weight; if only part was eaten, estimate the part",
+              "Known commercial product without a readable label: use knowledge of the brand; never return 0 for a recognized product",
+              "Food on a plate: estimate portion from visual references (spoon ≈ 15 g, 25 cm plate) and standard food tables (USDA, BEDCA); say if meat/fish weight is raw or cooked",
+              "calories = 0 only when there is no food; then confidence = 0",
+              "confidence > 0.85 label or well-known product; 0.6-0.85 identified but estimated; < 0.6 high uncertainty",
+              "An error above 15 % in calories breaks the tracking: be decisive"
+            ];
+            var SAME_IN_ALL = ['Plate', 'kcal', 'g', 'kg', 'cm', 'CSV', 'API', 'OK', 'OpenAI', 'Google', 'Gemini', 'Google Gemini',
+              'Anthropic', 'Claude', 'Anthropic Claude', 'English', 'Español', 'Xyzzy meal'];
+
+            function est(desc, kcal, p, c, f, fib, score, conf) {
+              return { description: desc, ingredients: [], totals: { grams: 350, calories: kcal, protein_g: p, carbs_g: c, fat_g: f, fiber_g: fib },
+                health_score: score, health_reason: 'Fake estimate for the conformance kit', confidence: conf, notes: '' };
+            }
+            var PLATE = est('Grilled chicken with rice', 512, 42, 55, 12, 3, 4, 0.7);
+            var HALF = est('Half grilled chicken with rice', 256, 21, 27, 6, 2, 4, 0.7);
+            var NOT_FOOD = est('Not food', 0, 0, 0, 0, 0, 1, 0);
+            var REVIEW = { score: 72, summary: 'Fake weekly summary', strengths: ['Fake strength one', 'Fake strength two'],
+              issues: ['Fake issue'], recommendations: ['Fake rec one', 'Fake rec two', 'Fake rec three', 'Fake rec four'] };
+
+            var out = document.getElementById('results');
+            var results = [];
+            var F, W, D;
+            var FAKE = { queue: [], calls: [] };
+
+            function record(id, title, status, detail) {
+              results.push({ id: id, title: title, status: status, detail: detail || '' });
+              var li = document.createElement('li');
+              li.className = status;
+              li.textContent = status.toUpperCase() + ' ' + id + ' ' + title + (detail ? ' :: ' + detail : '');
+              out.appendChild(li);
+            }
+            function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+            async function waitFor(fn, ms, what) {
+              var t0 = Date.now();
+              while (Date.now() - t0 < ms) {
+                try { var v = fn(); if (v) return v; } catch (e) { /* keep waiting */ }
+                await sleep(50);
+              }
+              throw new Error('timed out waiting for ' + what);
+            }
+            function hook(name, root) { return (root || D).querySelector('[data-dna="' + name + '"]'); }
+            function hooks(name, root) { return Array.prototype.slice.call((root || D).querySelectorAll('[data-dna="' + name + '"]')); }
+            function visible(el) {
+              if (!el || !el.isConnected) return false;
+              if (el.closest('[hidden],[aria-hidden="true"]')) return false;
+              var cs = W.getComputedStyle(el);
+              if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+              return el.getClientRects().length > 0;
+            }
+            function need(name, root) {
+              var el = hook(name, root);
+              if (!el) throw new Error('missing [data-dna="' + name + '"]');
+              return el;
+            }
+            function text(el) { return ((el && (el.value !== undefined && el.tagName !== 'BUTTON' ? el.value : el.textContent)) || '').trim(); }
+            function num(el) {
+              var m = text(el).replace(/\s/g, '').replace(/(\d)[.,](\d{3})(?!\d)/g, '$1$2').replace(',', '.').match(/-?\d+(\.\d+)?/);
+              return m ? parseFloat(m[0]) : NaN;
+            }
+            function near(a, b, tol) { return Math.abs(a - b) <= tol; }
+
+            function wrap(host, payloadText) {
+              if (/openai/.test(host)) return { id: 'fake', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: payloadText }, finish_reason: 'stop' }] };
+              if (/googleapis/.test(host)) return { candidates: [{ content: { role: 'model', parts: [{ text: payloadText }] }, finishReason: 'STOP' }] };
+              return { id: 'fake', type: 'message', role: 'assistant', content: [{ type: 'text', text: payloadText }], stop_reason: 'end_turn' };
+            }
+            function installFakes() {
+              var realFetch = W.fetch.bind(W);
+              W.fetch = function (input, init) {
+                var url = String((input && input.url) || input);
+                var host = new W.URL(url, W.location.href).host;
+                if (!/api\.openai\.com|generativelanguage\.googleapis\.com|api\.anthropic\.com/.test(host)) return realFetch(input, init);
+                var body = init && init.body ? String(init.body) : '';
+                FAKE.calls.push({ url: url, host: host, body: body });
+                var next = FAKE.queue.length ? FAKE.queue.shift() : { json: PLATE };
+                if (next.offline) return Promise.reject(new W.TypeError('Failed to fetch'));
+                return sleep(next.delay || 400).then(function () {
+                  if (next.status && next.status !== 200) {
+                    return new W.Response(JSON.stringify({ error: { message: 'fake error ' + next.status } }), { status: next.status, headers: { 'content-type': 'application/json' } });
+                  }
+                  return new W.Response(JSON.stringify(wrap(host, JSON.stringify(next.json))), { status: 200, headers: { 'content-type': 'application/json' } });
+                });
+              };
+              W.confirm = function () { return true; };
+              W.alert = function () {};
+              W.__dnaBlobs = [];
+              var oc = W.URL.createObjectURL.bind(W.URL);
+              W.URL.createObjectURL = function (b) { W.__dnaBlobs.push(b); return oc(b); };
+            }
+
+            async function load(lang, route) {
+              if (F) F.remove();
+              F = document.createElement('iframe');
+              F.title = 'App under test';
+              document.body.appendChild(F);
+              F.src = APP + '?lang=' + (lang || 'en') + '#/' + (route || 'today');
+              await waitFor(function () {
+                var d = F.contentDocument;
+                return d && d.readyState === 'complete' && d.documentElement.getAttribute('data-ready') === 'true';
+              }, 15000, 'the app to set <html data-ready="true">');
+              W = F.contentWindow; D = F.contentDocument;
+              installFakes();
+            }
+            async function go(screen) {
+              W.location.hash = '#/' + screen;
+              return waitFor(function () {
+                var s = D.querySelector('[data-screen="' + screen + '"]');
+                return s && visible(s) ? s : null;
+              }, 3000, 'screen ' + screen + ' to be the visible [data-screen]');
+            }
+            async function seed(data) {
+              if (!W.DNA_TEST || typeof W.DNA_TEST.seed !== 'function') throw new Error('window.DNA_TEST.seed is missing');
+              await W.DNA_TEST.seed(data);
+            }
+            async function fresh(data, lang, route) {
+              await load(lang, route);
+              await seed(data || {});
+              await load(lang, route);
+            }
+            function profile(goal) { return { weight_kg: 70, height_cm: 175, age: 30, sex: 'male', goal: goal || 'maintain' }; }
+            function settings() { return { provider: 'openai', model: 'fake-model', api_key: KEY }; }
+            function dayISO(daysAgo, hour) {
+              var d = new Date(); d.setHours(hour || 13, 0, 0, 0); d.setDate(d.getDate() - daysAgo); return d.toISOString();
+            }
+            function meal(daysAgo, kcal, score, extra) {
+              var m = { eaten_at: dayISO(daysAgo, 13), source: 'text', description: 'Xyzzy meal', grams: 300, calories: kcal,
+                protein_g: 30, carbs_g: 40, fat_g: 10, fiber_g: 4, health_score: score || 3, health_reason: '', confidence: 0.8, status: 'done' };
+              for (var k in extra || {}) m[k] = extra[k];
+              return m;
+            }
+            function photoFile(w, h) {
+              var c = document.createElement('canvas'); c.width = w || 1600; c.height = h || 1200;
+              var g = c.getContext('2d'); g.fillStyle = '#c84'; g.fillRect(0, 0, c.width, c.height);
+              g.fillStyle = '#fff'; g.beginPath(); g.arc(c.width / 2, c.height / 2, c.height / 3, 0, 7); g.fill();
+              return new Promise(function (r) { c.toBlob(function (b) { r(new W.File([b], 'meal.jpg', { type: 'image/jpeg' })); }, 'image/jpeg', 0.9); });
+            }
+            async function choosePhoto(file) {
+              var input = need('photo-input');
+              var dt = new W.DataTransfer(); dt.items.add(file);
+              input.files = dt.files;
+              input.dispatchEvent(new W.Event('change', { bubbles: true }));
+              await sleep(300);
+            }
+            function setValue(el, v) {
+              var proto = el.tagName === 'SELECT' ? W.HTMLSelectElement.prototype : el.tagName === 'TEXTAREA' ? W.HTMLTextAreaElement.prototype : W.HTMLInputElement.prototype;
+              Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+              el.dispatchEvent(new W.Event('input', { bubbles: true }));
+              el.dispatchEvent(new W.Event('change', { bubbles: true }));
+            }
+            function meals() { return hooks('meal'); }
+            function mealIds() { var ids = {}; meals().forEach(function (m) { ids[m.getAttribute('data-meal-id')] = 1; }); return ids; }
+            async function newMeal(idsBefore) {
+              return waitFor(function () {
+                return meals().filter(function (m) { return !idsBefore[m.getAttribute('data-meal-id')]; })[0];
+              }, 2000, 'a new [data-dna="meal"] on today within 2 s of saving');
+            }
+            async function waitStatus(id, status, ms) {
+              return waitFor(function () {
+                var el = D.querySelector('[data-dna="meal"][data-meal-id="' + id + '"]');
+                return el && el.getAttribute('data-status') === status ? el : null;
+              }, ms, 'meal ' + id + ' to reach data-status="' + status + '"');
+            }
+            function lastCall() { return FAKE.calls[FAKE.calls.length - 1]; }
+            function hasImage(body) { return /data:image\/|"inline_?[dD]ata"|"type"\s*:\s*"image"|"image_url"/.test(body); }
+            function bodyText(body) {
+              var parts = [];
+              (function walk(v) {
+                if (typeof v === 'string') parts.push(v);
+                else if (v && typeof v === 'object') for (var k in v) walk(v[k]);
+              })(JSON.parse(body));
+              return parts.join('\n');
+            }
+            async function imageMaxSide(body) {
+              var m = body.match(/[A-Za-z0-9+/]{4000,}={0,2}/);
+              if (!m) return -1;
+              var img = new Image();
+              await new Promise(function (r) { img.onload = img.onerror = r; img.src = 'data:image/jpeg;base64,' + m[0]; });
+              return Math.max(img.naturalWidth, img.naturalHeight);
+            }
+            async function capturePhoto(words) {
+              await go('today');
+              var before = mealIds();
+              await go('capture');
+              await choosePhoto(await photoFile());
+              if (words) setValue(need('capture-text'), words);
+              need('capture-save').click();
+              await go('today').catch(function () {});
+              return newMeal(before);
+            }
+
+            /* ---------- checks ---------- */
+            var CHECKS = [];
+            function check(id, title, fn) { CHECKS.push({ id: id, title: title, fn: fn }); }
+
+            check('F1.1', 'Photo: analyzing at once, then every field within 20 s', async function () {
+              await fresh({ profile: profile(), settings: settings() });
+              FAKE.queue.push({ json: PLATE, delay: 1200 });
+              var m = await capturePhoto();
+              var id = m.getAttribute('data-meal-id');
+              if (m.getAttribute('data-status') !== 'pending') throw new Error('new meal status is "' + m.getAttribute('data-status') + '", expected "pending" right after saving');
+              await waitStatus(id, 'done', 20000);
+              await go('meal/' + id);
+              var screen = D.querySelector('[data-screen="meal"]');
+              if (!text(need('meal-name', screen))) throw new Error('meal-name is empty');
+              var want = { 'field-grams': 350, 'field-calories': 512, 'field-protein': 42, 'field-carbs': 55, 'field-fat': 12, 'field-fiber': 3 };
+              for (var k in want) { var v = num(need(k, screen)); if (!near(v, want[k], want[k] > 100 ? 10 : 1)) throw new Error(k + ' shows ' + v + ', expected ' + want[k]); }
+              if (!near(num(need('meal-score', screen)), 4, 0)) throw new Error('meal-score does not show 4');
+              if (!/\d/.test(text(need('meal-confidence', screen)))) throw new Error('meal-confidence shows no number');
+            });
+            check('F1.2', 'The estimator prompt carries every x-estimation-rules line verbatim', async function () {
+              var call = lastCall(); if (!call) throw new Error('no model call recorded (F1.1 must run first)');
+              var t = bodyText(call.body);
+              var missing = RULES.filter(function (r) { return t.indexOf(r) < 0; });
+              if (missing.length) throw new Error('missing rule: ' + missing[0]);
+            });
+            check('F1.2b', 'The photo is downscaled on the device to 1024 px or less', async function () {
+              var call = lastCall(); if (!call || !hasImage(call.body)) throw new Error('no image in the last model call');
+              var side = await imageMaxSide(call.body);
+              if (side < 0) throw new Error('could not find base64 image data in the request');
+              if (side === 0) throw new Error('image in the request does not decode');
+              if (side > 1024) throw new Error('longest side sent is ' + side + ' px');
+            });
+            check('F1.3', 'Not food: no meal is invented and the person is told', async function () {
+              await fresh({ profile: profile(), settings: settings() });
+              await go('today'); var before = meals().length;
+              FAKE.queue.push({ json: NOT_FOOD });
+              await go('capture');
+              await choosePhoto(await photoFile());
+              need('capture-save').click();
+              await waitFor(function () { var n = hook('notice'); return n && visible(n) && text(n); }, 20000, 'a visible [data-dna="notice"] with text');
+              await sleep(500);
+              await go('today');
+              var done = meals().filter(function (m) { return m.getAttribute('data-status') === 'done'; });
+              if (done.length > before) throw new Error('a meal was logged for a photo with no food');
+            });
+            check('F2.1', 'Text only: logged with the same fields as F1', async function () {
+              await fresh({ profile: profile(), settings: settings() });
+              await go('today'); var before = mealIds();
+              FAKE.queue.push({ json: PLATE });
+              await go('capture');
+              setValue(need('capture-text'), 'two fried eggs and a slice of wholemeal toast');
+              need('capture-save').click();
+              await go('today').catch(function () {});
+              var m = await newMeal(before);
+              await waitStatus(m.getAttribute('data-meal-id'), 'done', 20000);
+              if (bodyText(lastCall().body).indexOf('two fried eggs and a slice of wholemeal toast') < 0) throw new Error('the words were not sent to the model');
+              await go('meal/' + m.getAttribute('data-meal-id'));
+              if (!near(num(need('field-calories')), 512, 10)) throw new Error('field-calories does not show the estimate');
+            });
+            check('F3.1', 'Photo + words: one request carries both', async function () {
+              await fresh({ profile: profile(), settings: settings() });
+              FAKE.queue.push({ json: PLATE });
+              var m = await capturePhoto('wholemeal base, half of it');
+              await waitStatus(m.getAttribute('data-meal-id'), 'done', 20000);
+              var b = lastCall().body;
+              if (!hasImage(b)) throw new Error('no image in the request');
+              if (bodyText(b).indexOf('wholemeal base, half of it') < 0) throw new Error('the words are not in the request');
+            });
+            check('F4.1', 'Editing a number updates today at once', async function () {
+              await fresh({ profile: profile(), settings: settings(), meals: [meal(0, 400, 3)] });
+              var m = meals()[0]; if (!m) throw new Error('seeded meal not listed on today');
+              await go('meal/' + m.getAttribute('data-meal-id'));
+              setValue(need('field-calories'), '800');
+              await sleep(500);
+              await go('today');
+              await waitFor(function () { return near(num(need('today-kcal')), 800, 10); }, 2000, 'today-kcal to show 800 (shows ' + num(hook('today-kcal')) + ')');
+            });
+            check('F4.2', 'A correction in words re-analyzes with the original photo', async function () {
+              await fresh({ profile: profile(), settings: settings() });
+              FAKE.queue.push({ json: PLATE });
+              var m = await capturePhoto();
+              var id = m.getAttribute('data-meal-id');
+              await waitStatus(id, 'done', 20000);
+              await go('meal/' + id);
+              var calls = FAKE.calls.length;
+              FAKE.queue.push({ json: HALF });
+              setValue(need('correction-text'), 'it was only half');
+              need('correction-send').click();
+              await waitFor(function () { return FAKE.calls.length > calls; }, 5000, 'a new model call after correction-send');
+              var b = lastCall().body;
+              if (!hasImage(b)) throw new Error('the correction call does not carry the original photo');
+              if (bodyText(b).indexOf('it was only half') < 0) throw new Error('the correction words are not in the call');
+              await waitFor(function () { var s = D.querySelector('[data-screen="meal"]'); return s && near(num(hook('field-calories', s)), 256, 10); }, 20000, 'field-calories to show the corrected 256');
+            });
+            check('F4.3', 'Retry a failed analysis without retaking the photo', async function () {
+              await fresh({ profile: profile(), settings: settings() });
+              FAKE.queue.push({ status: 500 });
+              var m = await capturePhoto();
+              var id = m.getAttribute('data-meal-id');
+              await waitStatus(id, 'failed', 20000);
+              await go('meal/' + id);
+              FAKE.queue.push({ json: PLATE });
+              var calls = FAKE.calls.length;
+              need('retry').click();
+              await waitFor(function () { return FAKE.calls.length > calls; }, 5000, 'a model call after retry');
+              if (!hasImage(lastCall().body)) throw new Error('retry did not resend the photo');
+              await go('today');
+              await waitStatus(id, 'done', 20000);
+            });
+            check('F5.1', 'Today: kcal and macros against the target, quality as a number', async function () {
+              await fresh({ profile: profile('maintain'), settings: settings(), meals: [meal(0, 400, 3, { protein_g: 30 }), meal(0, 610, 4, { protein_g: 25 })] });
+              await go('today');
+              var k = num(need('today-kcal')), t = num(need('today-kcal-target'));
+              if (!near(k, 1010, 10)) throw new Error('today-kcal ' + k + ', expected 1010');
+              if (k % 10 !== 0) throw new Error('today-kcal ' + k + ' is not rounded to 10');
+              if (!near(t, 2560, 10)) throw new Error('today-kcal-target ' + t + ', expected 2560 (Mifflin-St Jeor, male 70 kg 175 cm 30 y, x1.55)');
+              if (!near(num(need('today-protein')), 55, 1)) throw new Error('today-protein is not 55');
+              if (!near(num(need('today-protein-target')), 140, 1)) throw new Error('today-protein-target is not 140 (2.0 g/kg)');
+              ['today-carbs', 'today-carbs-target', 'today-fat', 'today-fat-target'].forEach(function (h) { if (isNaN(num(need(h)))) throw new Error(h + ' shows no number'); });
+              var q = need('quality');
+              if (!/3[.,]5/.test(text(q) + ' ' + (q.getAttribute('aria-label') || '') + ' ' + (q.getAttribute('aria-valuenow') || ''))) throw new Error('quality does not show the day average 3.5 as a number');
+            });
+            check('F5.2', 'Targets for gain and lose', async function () {
+              var want = { gain: 2940, lose: 2170 };
+              for (var g in want) {
+                await fresh({ profile: profile(g), settings: settings() });
+                await go('today');
+                var t = num(need('today-kcal-target'));
+                if (!near(t, want[g], 10)) throw new Error(g + ': today-kcal-target ' + t + ', expected ' + want[g]);
+              }
+            });
+            async function chartsCheck(days) {
+              var ms = []; for (var i = 0; i < days; i++) ms.push(meal(i, 1800 + (i % 5) * 150, 2 + (i % 4)));
+              var ws = []; for (var j = 0; j < Math.min(days, 5); j++) ws.push({ date: dayISO(j * 6 > days ? days - 1 : j * 6).slice(0, 10), weight_kg: 70 + j * 0.3 });
+              await fresh({ profile: profile(), settings: settings(), meals: ms, weights: ws });
+              var s = await go('trends');
+              ['chart-kcal', 'chart-balance', 'chart-quality', 'chart-weight'].forEach(function (h) {
+                var c = need(h, s);
+                if (!visible(c)) throw new Error(h + ' is not visible');
+                if (!c.querySelector('svg')) throw new Error(h + ' has no svg');
+                var alt = '';
+                c.querySelectorAll('table, figcaption, [role="img"][aria-label], svg[aria-label]').forEach(function (e) { alt += ' ' + (e.getAttribute('aria-label') || '') + ' ' + e.textContent; });
+                var desc = c.querySelector('[aria-describedby]'); if (desc) desc.getAttribute('aria-describedby').split(/\s+/).forEach(function (x) { var e = D.getElementById(x); if (e) alt += ' ' + e.textContent; });
+                if (!/\d/.test(alt)) throw new Error(h + ' has no text or table alternative with the numbers');
+                var labels = Array.prototype.map.call(c.querySelectorAll('svg text'), function (e) { return e.textContent.trim(); });
+                var bad = labels.filter(function (l) { return /NaN|undefined|Infinity|null/.test(l); });
+                if (bad.length) throw new Error(h + ' shows "' + bad[0] + '"');
+                var nums = labels.filter(function (l) { return /^-?[\d.,]+$/.test(l); });
+                var seen = {}; nums.forEach(function (n) { if (seen[n]) throw new Error(h + ' repeats the tick label "' + n + '" with ' + days + ' day(s) of data'); seen[n] = 1; });
+              });
+            }
+            check('F6.1', 'Trends with 30 days: four charts, readable, each with a text alternative', function () { return chartsCheck(30); });
+            check('F6.1b', 'Trends with 7 days', function () { return chartsCheck(7); });
+            check('F6.1c', 'Trends with 1 day', function () { return chartsCheck(1); });
+            check('F7.1', 'Weekly review in the person\'s language, at most 3 recommendations', async function () {
+              var ms = []; for (var i = 0; i < 7; i++) ms.push(meal(i, 2000, 3));
+              await fresh({ profile: profile(), settings: settings(), meals: ms }, 'es');
+              var s = await go('review');
+              FAKE.queue.push({ json: REVIEW });
+              need('review-request', s).click();
+              await waitFor(function () { return near(num(hook('review-score')), 72, 0); }, 20000, 'review-score to show 72');
+              if (!/spanish|español|espanol|\bes\b/i.test(bodyText(lastCall().body))) throw new Error('the review request does not ask for the person\'s language (es)');
+              if (text(need('review-summary')).indexOf('Fake weekly summary') < 0) throw new Error('review-summary not shown');
+              if (need('review-strengths').querySelectorAll('li').length !== 2) throw new Error('review-strengths should list 2 items');
+              if (need('review-issues').querySelectorAll('li').length !== 1) throw new Error('review-issues should list 1 item');
+              var recs = need('review-recommendations').querySelectorAll('li').length;
+              if (recs < 1 || recs > 3) throw new Error('review-recommendations lists ' + recs + ', expected 1 to 3');
+            });
+            check('F8.1', 'Export: a CSV with every meal and its numbers', async function () {
+              await fresh({ profile: profile(), settings: settings(), meals: [meal(0, 123, 3), meal(1, 456, 4), meal(2, 789, 2)] });
+              var s = await go('settings');
+              need('export', s).click();
+              await waitFor(function () { return W.__dnaBlobs.length; }, 3000, 'a Blob passed to URL.createObjectURL');
+              var csv = await W.__dnaBlobs[W.__dnaBlobs.length - 1].text();
+              var lines = csv.split(/\r?\n/).filter(function (l) { return l.trim(); });
+              if (lines.length !== 4) throw new Error('CSV has ' + lines.length + ' non-empty lines, expected a header and 3 meals');
+              ['123', '456', '789'].forEach(function (n) { if (csv.indexOf(n) < 0) throw new Error('CSV is missing ' + n + ' kcal'); });
+            });
+            check('F8.2', 'Delete everything: meals, photos, profile and key are gone', async function () {
+              await fresh({ profile: profile(), settings: settings(), meals: [meal(0, 500, 3)] });
+              var s = await go('settings');
+              need('delete-all', s).click();
+              await sleep(300);
+              var yes = hook('confirm-yes'); if (yes && visible(yes)) yes.click();
+              await sleep(1500);
+              var stores = [W.localStorage, W.sessionStorage];
+              stores.forEach(function (st) { for (var i = 0; i < st.length; i++) { if (String(st.getItem(st.key(i))).indexOf(KEY) >= 0) throw new Error('the API key is still in web storage'); } });
+              var dbs = await W.indexedDB.databases();
+              for (var d = 0; d < dbs.length; d++) {
+                var db = await new Promise(function (r, j) { var q = W.indexedDB.open(dbs[d].name); q.onsuccess = function () { r(q.result); }; q.onerror = j; });
+                var names = Array.prototype.slice.call(db.objectStoreNames);
+                for (var n = 0; n < names.length; n++) {
+                  var all = await new Promise(function (r) { var q = db.transaction(names[n]).objectStore(names[n]).getAll(); q.onsuccess = function () { r(q.result); }; q.onerror = function () { r([]); }; });
+                  var str = JSON.stringify(all);
+                  if (str.indexOf(KEY) >= 0) { db.close(); throw new Error('the API key is still in IndexedDB store ' + names[n]); }
+                  if (/"calories"\s*:/.test(str)) { db.close(); throw new Error('meals are still in IndexedDB store ' + names[n]); }
+                  if (/"weight_kg"\s*:\s*70\b/.test(str)) { db.close(); throw new Error('the profile is still in IndexedDB store ' + names[n]); }
+                }
+                db.close();
+              }
+            });
+            check('F9.1', 'Offline: a photo is kept and analyzed when back online', async function () {
+              await fresh({ profile: profile(), settings: settings() });
+              Object.defineProperty(W.navigator, 'onLine', { configurable: true, get: function () { return false; } });
+              W.dispatchEvent(new W.Event('offline'));
+              FAKE.queue.push({ offline: true }, { offline: true }, { offline: true });
+              var m = await capturePhoto();
+              var id = m.getAttribute('data-meal-id');
+              await sleep(2000);
+              var st = D.querySelector('[data-dna="meal"][data-meal-id="' + id + '"]').getAttribute('data-status');
+              if (st !== 'pending') throw new Error('offline meal status is "' + st + '", expected "pending"');
+              FAKE.queue.length = 0;
+              FAKE.queue.push({ json: PLATE });
+              Object.defineProperty(W.navigator, 'onLine', { configurable: true, get: function () { return true; } });
+              W.dispatchEvent(new W.Event('online'));
+              await waitStatus(id, 'done', 20000);
+            });
+            check('F9.2', 'Installable: manifest and service worker over http', async function () {
+              await load('en', 'today');
+              var link = D.querySelector('link[rel="manifest"]'); if (!link) throw new Error('no <link rel="manifest">');
+              var mf = await (await fetch(link.href)).json();
+              if (['standalone', 'fullscreen', 'minimal-ui'].indexOf(mf.display) < 0) throw new Error('manifest display is "' + mf.display + '"');
+              if (!mf.name || !mf.start_url || !(mf.icons && mf.icons.length)) throw new Error('manifest needs name, start_url and icons');
+              var reg = null, t0 = Date.now();
+              while (!reg && Date.now() - t0 < 5000) { reg = await W.navigator.serviceWorker.getRegistration(); if (!reg) await sleep(200); }
+              if (!reg) throw new Error('no service worker registered within 5 s');
+            });
+            check('F10.1', 'No key: manual numbers, and a way to the key setting', async function () {
+              await fresh({ profile: profile() });
+              await go('today'); var before = mealIds();
+              var s = await go('capture');
+              var link = need('add-key-link', s);
+              if (!visible(link)) throw new Error('add-key-link is not visible without a key');
+              if (!/#\/settings/.test(link.getAttribute('href') || '')) throw new Error('add-key-link does not point to #/settings');
+              setValue(need('manual-calories', s), '300');
+              setValue(need('manual-protein', s), '20');
+              setValue(need('manual-carbs', s), '30');
+              setValue(need('manual-fat', s), '10');
+              var t = hook('capture-text', s); if (t) setValue(t, 'manual meal');
+              need('capture-save', s).click();
+              await go('today').catch(function () {});
+              var m = await newMeal(before);
+              await waitStatus(m.getAttribute('data-meal-id'), 'done', 3000);
+              if (FAKE.calls.length) throw new Error('a model was called without a key');
+              if (!near(num(need('today-kcal')), 300, 10)) throw new Error('today-kcal does not show the 300 typed');
+            });
+
+            function collectStrings() {
+              var set = {};
+              D.body.innerText.split('\n').forEach(function (s) { s = s.trim(); if (s) set[s] = 1; });
+              D.querySelectorAll('[aria-label],[title],[placeholder],[alt],[aria-roledescription],[aria-valuetext]').forEach(function (e) {
+                ['aria-label', 'title', 'placeholder', 'alt', 'aria-roledescription', 'aria-valuetext'].forEach(function (a) { var v = e.getAttribute(a); if (v && v.trim()) set[v.trim()] = 1; });
+              });
+              D.querySelectorAll('[aria-labelledby],[aria-describedby]').forEach(function (e) {
+                ((e.getAttribute('aria-labelledby') || '') + ' ' + (e.getAttribute('aria-describedby') || '')).split(/\s+/).forEach(function (x) { var t = x && D.getElementById(x); if (t && t.textContent.trim()) set[t.textContent.trim()] = 1; });
+              });
+              if (D.title) set[D.title.trim()] = 1;
+              return set;
+            }
+            function neutral(s) {
+              if (SAME_IN_ALL.indexOf(s) >= 0) return true;
+              if (s.replace(/[^A-Za-zÀ-ÿ]/g, '').length < 3) return true;
+              if (/^[\d\s.,:;%/()+\-–·×]*(kcal|g|kg|cm|%)?[\d\s.,:;%/()+\-–·×]*$/i.test(s)) return true;
+              if (/^[a-z0-9.\-]+$/.test(s) && /\d/.test(s)) return true;
+              return false;
+            }
+            function accName(e) {
+              var n = e.getAttribute('aria-label') || '';
+              if (!n && e.getAttribute('aria-labelledby')) n = e.getAttribute('aria-labelledby').split(/\s+/).map(function (x) { var t = D.getElementById(x); return t ? t.textContent : ''; }).join(' ');
+              if (!n && e.labels && e.labels.length) n = Array.prototype.map.call(e.labels, function (l) { return l.textContent; }).join(' ');
+              if (!n && e.tagName !== 'INPUT' && e.tagName !== 'SELECT' && e.tagName !== 'TEXTAREA') n = e.textContent;
+              if (!n) n = e.getAttribute('title') || e.getAttribute('alt') || '';
+              return n.trim();
+            }
+            async function tour(lang) {
+              await fresh({ profile: profile(), settings: settings(), meals: [meal(0, 500, 3), meal(1, 600, 4)] }, lang);
+              if ((D.documentElement.getAttribute('lang') || '').slice(0, 2) !== lang) throw new Error('<html lang> is "' + D.documentElement.getAttribute('lang') + '" with ?lang=' + lang);
+              var strings = {}, problems = [];
+              var routes = SCREENS.concat(['meal/' + meals()[0].getAttribute('data-meal-id')]);
+              for (var i = 0; i < routes.length; i++) {
+                var s = await go(routes[i]);
+                var sid = routes[i].split('/')[0];
+                var hd = s.querySelector('h1,h2,[role="heading"]');
+                if (!hd || !visible(hd) || !hd.textContent.trim()) problems.push('screen ' + sid + ' has no visible heading');
+                else {
+                  var first = s.querySelector('button,input,select,textarea,a[href],[tabindex]');
+                  if (first && (first.compareDocumentPosition(hd) & 2)) problems.push('screen ' + sid + ' does not start with its heading');
+                }
+                D.querySelectorAll('button,a[href],input,select,textarea,[tabindex]').forEach(function (e) {
+                  if (e.type === 'hidden' || e.disabled) return;
+                  var focusable = e.tabIndex >= 0 && !e.closest('[hidden],[aria-hidden="true"],[inert]') && W.getComputedStyle(e).display !== 'none' && W.getComputedStyle(e).visibility !== 'hidden';
+                  if (focusable && !accName(e)) problems.push('no accessible name on ' + sid + ': ' + e.outerHTML.slice(0, 90));
+                });
+                var got = collectStrings(); for (var k in got) strings[k] = 1;
+              }
+              return { strings: strings, problems: problems };
+            }
+            check('I18N.1', 'Every screen in en and es: nothing left in the other language', async function () {
+              var en = await tour('en'), es = await tour('es');
+              var leaks = Object.keys(es.strings).filter(function (s) { return en.strings[s] && !neutral(s); });
+              if (leaks.length) throw new Error(leaks.length + ' string(s) identical in en and es, e.g. "' + leaks.slice(0, 4).join('", "') + '"');
+            });
+            check('A11Y.1', 'Every screen starts with a heading and every control has a name, in both languages', async function () {
+              var all = [];
+              for (var i = 0; i < LANGS.length; i++) { var r = await tour(LANGS[i]); r.problems.forEach(function (p) { all.push(LANGS[i] + ': ' + p); }); }
+              var uniq = all.filter(function (p, i) { return all.indexOf(p) === i; });
+              if (uniq.length) throw new Error(uniq.length + ' problem(s): ' + uniq.slice(0, 3).join(' | '));
+            });
+
+            async function run() {
+              if (location.protocol === 'file:') {
+                CHECKS.forEach(function (c) { record(c.id, c.title, 'skip', 'serve over http://localhost'); });
+              } else {
+                for (var i = 0; i < CHECKS.length; i++) {
+                  var c = CHECKS[i];
+                  try {
+                    await Promise.race([c.fn(), sleep(90000).then(function () { throw new Error('check timed out after 90 s'); })]);
+                    record(c.id, c.title, 'pass');
+                  } catch (e) { record(c.id, c.title, 'fail', e && e.message ? e.message : String(e)); }
+                }
+              }
+              var count = function (s) { return results.filter(function (r) { return r.status === s; }).length; };
+              var sum = count('pass') + ' passed, ' + count('fail') + ' failed, ' + count('skip') + ' skipped, ' + results.length + ' total';
+              document.getElementById('summary').textContent = sum;
+              window.__conformance = { done: true, summary: sum, results: results };
+            }
+            window.__conformance = { done: false, results: results };
+            run();
+          })();
+      - path: tests/conformance.mjs
+        content: |
+          // Plate conformance kit, node part. Part of the capsule: copy verbatim, never edit.
+          // Run from the app folder: node tests/conformance.mjs
+          // 1. Checks on disk and on the web: kit integrity, capsule hash in the lock, cache name, model sources.
+          // 2. The browser part: serves the folder on localhost, opens tests/conformance.html in headless
+          //    Chromium (playwright) and prints its results.
+          // Exit code 0 only when every check passes and none is skipped.
+          import { readFileSync, existsSync, statSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { createServer } from 'node:http';
+          import { join, extname, resolve, dirname } from 'node:path';
+          import { fileURLToPath } from 'node:url';
+
+          const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+          const LOCK = join(ROOT, 'plate.dna.lock.yaml');
+          const UA = { 'user-agent': 'Mozilla/5.0 (DNApps conformance kit)' };
+          const results = [];
+          const rec = (id, title, status, detail = '') => {
+            results.push({ id, title, status, detail });
+            console.log(`${status.toUpperCase().padEnd(4)} ${id} ${title}${detail ? ' :: ' + detail : ''}`);
+          };
+          const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+          const norm = (t) => t.replace(/\r\n/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+
+          async function get(url) {
+            const r = await fetch(url, { headers: UA, redirect: 'follow' });
+            if (!r.ok) throw new Error(`${url} answered HTTP ${r.status}`);
+            return Buffer.from(await r.arrayBuffer());
+          }
+          function top(lock, key) {
+            const m = lock.match(new RegExp(`^${key}:\\s*"?([^"\\n]+?)"?\\s*$`, 'm'));
+            return m ? m[1].trim() : null;
+          }
+          function block(text, key) {
+            const lines = text.split('\n');
+            const i = lines.findIndex((l) => l.startsWith(`${key}:`));
+            if (i < 0) return [];
+            const out = [];
+            for (let j = i + 1; j < lines.length; j++) {
+              if (lines[j].trim() && !/^\s/.test(lines[j])) break;
+              out.push(lines[j]);
+            }
+            return out;
+          }
+          function models(lock) {
+            const list = [];
+            let cur = null;
+            for (const l of block(lock, 'models')) {
+              const item = l.match(/^\s*-\s+(\w+):\s*"?([^"]*?)"?\s*$/);
+              const field = l.match(/^\s+(\w+):\s*"?([^"]*?)"?\s*$/);
+              if (item) { cur = { [item[1]]: item[2] }; list.push(cur); } else if (field && cur) cur[field[1]] = field[2];
+            }
+            return list;
+          }
+          function kitFromCapsule(capsule) {
+            const lines = capsule.split('\n');
+            const files = {};
+            for (let i = 0; i < lines.length; i++) {
+              const p = lines[i].match(/^(\s*)- path:\s*"?([^"\s]+)"?\s*$/);
+              if (!p || !/^tests\/conformance\./.test(p[2])) continue;
+              const c = lines[i + 1] && lines[i + 1].match(/^(\s*)content:\s*\|[-+]?\s*$/);
+              if (!c) continue;
+              const body = [];
+              let indent = null;
+              for (let j = i + 2; j < lines.length; j++) {
+                const l = lines[j];
+                if (l.trim() === '') { body.push(''); continue; }
+                const lead = l.match(/^ */)[0].length;
+                if (indent === null) indent = lead;
+                if (lead < indent) break;
+                body.push(l.slice(indent));
+              }
+              files[p[2]] = body.join('\n');
+            }
+            return files;
+          }
+
+          async function diskChecks() {
+            if (!existsSync(LOCK)) { rec('LOCK.0', 'plate.dna.lock.yaml exists', 'fail', 'missing'); return; }
+            const lock = readFileSync(LOCK, 'utf8');
+            const source = top(lock, 'capsule_source');
+            const declared = top(lock, 'capsule_sha256');
+            let capsule = null;
+            try {
+              if (!source || !/^https:\/\/raw\.githubusercontent\.com\//.test(source)) throw new Error(`capsule_source must be the raw.githubusercontent.com URL of the capsule, got ${source}`);
+              const bytes = await get(source);
+              capsule = bytes.toString('utf8');
+              const real = sha256(bytes);
+              if (declared !== real) throw new Error(`lock says ${declared}, the bytes at capsule_source hash to ${real}`);
+              rec('LOCK.1', 'capsule_sha256 is the sha256 of the capsule at capsule_source', 'pass');
+            } catch (e) { rec('LOCK.1', 'capsule_sha256 is the sha256 of the capsule at capsule_source', 'fail', e.message); }
+
+            if (capsule) {
+              const kit = kitFromCapsule(capsule);
+              const names = Object.keys(kit);
+              const bad = names.filter((n) => !existsSync(join(ROOT, n)) || norm(readFileSync(join(ROOT, n), 'utf8')) !== norm(kit[n]));
+              if (names.length < 3) rec('KIT.1', 'Kit files match the capsule byte for byte', 'fail', `found ${names.length} kit files in the capsule`);
+              else rec('KIT.1', 'Kit files match the capsule byte for byte', bad.length ? 'fail' : 'pass', bad.length ? `edited or missing: ${bad.join(', ')}` : '');
+            } else rec('KIT.1', 'Kit files match the capsule byte for byte', 'skip', 'capsule not available');
+
+            try {
+              const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+              const name = (sw.match(/CACHE_NAME\s*=\s*['"]([^'"]+)['"]/) || [])[1];
+              const list = (sw.match(/CACHE_FILES\s*=\s*\[([\s\S]*?)\]/) || [])[1];
+              if (!name || list === undefined) throw new Error('sw.js must declare CACHE_NAME = \'...\' and CACHE_FILES = [...] as literals');
+              const files = [...list.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]);
+              const h = createHash('sha256');
+              for (const f of files) {
+                const p = join(ROOT, f === './' || f === '' ? 'index.html' : f.replace(/^\.\//, ''));
+                if (!existsSync(p) || !statSync(p).isFile()) throw new Error(`CACHE_FILES lists ${f}, which is not a file`);
+                h.update(readFileSync(p));
+              }
+              for (const must of ['index.html', 'manifest.json']) if (!files.some((f) => f.replace(/^\.\//, '') === must)) throw new Error(`CACHE_FILES does not list ${must}`);
+              const version = capsule ? (capsule.match(/^identity:[\s\S]*?^\s+version:\s*"([^"]+)"/m) || [])[1] : null;
+              const want = `plate-${version || '<version>'}-${h.digest('hex').slice(0, 12)}`;
+              if (!version) throw new Error(`cannot read identity.version from the capsule; expected ${want}`);
+              if (name !== want) throw new Error(`CACHE_NAME is ${name}, expected ${want}`);
+              rec('F9.3', 'Cache name is plate-<version>-<hash of the cached files>', 'pass');
+            } catch (e) { rec('F9.3', 'Cache name is plate-<version>-<hash of the cached files>', 'fail', e.message); }
+
+            const ms = models(lock);
+            for (const provider of ['openai', 'google', 'anthropic']) {
+              const id = `MODEL.${provider}`;
+              const m = ms.find((x) => x.provider === provider);
+              const title = `${provider}: default model looked up on the web, with source and date`;
+              if (!m || !m.model) { rec(id, title, 'fail', 'no entry under models:'); continue; }
+              if (m.checked !== 'true') { rec(id, title, 'fail', `checked is ${m.checked}; look it up (tried URL and error go in the lock only if every lookup fails)`); continue; }
+              if (!/^https?:\/\//.test(m.source || '') || !/^\d{4}-\d{2}-\d{2}$/.test(m.date || '')) { rec(id, title, 'fail', 'checked: true needs source: <url> and date: YYYY-MM-DD'); continue; }
+              try {
+                const page = (await get(m.source)).toString('utf8');
+                if (!page.includes(m.model)) throw new Error(`${m.model} does not appear at ${m.source}`);
+                rec(id, title, 'pass', m.model);
+              } catch (e) { rec(id, title, 'fail', e.message); }
+            }
+          }
+
+          const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+            '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml',
+            '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.yaml': 'text/yaml; charset=utf-8' };
+
+          async function browserChecks() {
+            let chromium;
+            try { ({ chromium } = await import('playwright')); } catch {
+              rec('BROWSER', 'Browser part of the kit', 'skip', 'playwright is not installed: run `npm i --no-save playwright && npx playwright install chromium` in this folder, then run this again');
+              return;
+            }
+            const server = createServer((req, res) => {
+              const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+              let file = join(ROOT, path.endsWith('/') ? path + 'index.html' : path);
+              if (!file.startsWith(ROOT) || !existsSync(file) || !statSync(file).isFile()) { res.writeHead(404); res.end('not found'); return; }
+              res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
+              res.end(readFileSync(file));
+            });
+            await new Promise((r) => server.listen(0, '127.0.0.1', r));
+            const port = server.address().port;
+            let browser;
+            try {
+              browser = await chromium.launch();
+              const page = await (await browser.newContext({ locale: 'en-US' })).newPage();
+              page.on('pageerror', (e) => console.log(`     app error: ${e.message}`));
+              await page.goto(`http://localhost:${port}/tests/conformance.html`);
+              await page.waitForFunction(() => window.__conformance && window.__conformance.done, null, { timeout: 30 * 60 * 1000 });
+              const r = await page.evaluate(() => window.__conformance.results);
+              for (const x of r) rec(x.id, x.title, x.status, x.detail);
+            } catch (e) {
+              rec('BROWSER', 'Browser part of the kit', 'fail', e.message);
+            } finally {
+              if (browser) await browser.close();
+              server.close();
+            }
+          }
+
+          await diskChecks();
+          await browserChecks();
+          const n = (s) => results.filter((r) => r.status === s).length;
+          console.log(`\n${n('pass')} passed, ${n('fail')} failed, ${n('skip')} skipped, ${results.length} total`);
+          process.exit(n('fail') || n('skip') ? 1 : 0);
 
 rna:
   phases:
